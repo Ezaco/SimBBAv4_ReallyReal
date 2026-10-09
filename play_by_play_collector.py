@@ -17,6 +17,7 @@ class BasePlayByPlay:
     PassedPlayerID: int = 0
     DefenderID: int = 0
     SubstitutePlayerID: int = 0
+    SubstitutedPlayerID: int = 0
     BlockingPlayerID: int = 0
     StealingPlayerID: int = 0
     FoulingPlayerID: int = 0
