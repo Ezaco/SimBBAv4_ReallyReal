@@ -104,6 +104,29 @@ def team_df_from_api(team):
     return pd.DataFrame([{"id": team.get("ID"), "abbr": team.get("Abbr")}])
 
 
+def pair_substitutions(previousLineup, newLineup):
+    # Returns (entering player ID, replaced player ID) for each player who came onto the court.
+    # A player is paired with whoever held the same slot before; leftovers are paired in slot order.
+    previousBySlot = {slot: int(player["ID"]) for slot, player in previousLineup.items()}
+    newBySlot = {slot: int(player["ID"]) for slot, player in newLineup.items()}
+    previousPlayerIds = set(previousBySlot.values())
+    newPlayerIds = set(newBySlot.values())
+    leavingIds = [pid for pid in previousBySlot.values() if pid not in newPlayerIds]
+    entering = [(slot, pid) for slot, pid in newBySlot.items() if pid not in previousPlayerIds]
+    replacedById = {}
+    for slot, pid in entering:
+        replacedId = previousBySlot.get(slot)
+        if replacedId in leavingIds:
+            replacedById[pid] = replacedId
+            leavingIds.remove(replacedId)
+    pairs = []
+    for slot, pid in entering:
+        if pid not in replacedById:
+            replacedById[pid] = leavingIds.pop(0) if leavingIds else 0
+        pairs.append((pid, replacedById[pid]))
+    return pairs
+
+
 class GameState:
     def __init__(self, match, gamenum=1):
         match_data = match["MatchData"]
@@ -326,19 +349,18 @@ class GameState:
             starters, protectedPlayer
         )
         for team, previousLineup, team_df in previousLineups:
-            previousPlayerIds = {int(player["ID"]) for player in previousLineup.values()}
             teamId = int(team_df["id"].iloc[0])
-            for player in (self.t1onCourt if team == self.t1 else self.t2onCourt).values():
-                playerId = int(player["ID"])
-                if playerId not in previousPlayerIds:
-                    self.pbp.append(
-                        self.make_play(
-                            substitution,
-                            no_outcome,
-                            team_id=teamId,
-                            substitute_id=playerId,
-                        )
+            newLineup = self.t1onCourt if team == self.t1 else self.t2onCourt
+            for playerId, replacedId in pair_substitutions(previousLineup, newLineup):
+                self.pbp.append(
+                    self.make_play(
+                        substitution,
+                        no_outcome,
+                        team_id=teamId,
+                        substitute_id=playerId,
+                        substituted_id=replacedId,
                     )
+                )
 
     def pullFreeThrowSubs(self, protectedPlayer):
         self.applySubs(False, protectedPlayer)
@@ -563,7 +585,7 @@ class GameState:
     def make_play(self, event_id, outcome_id, elapsed=0,
                   ball_carrier=None, defender=None,
                   blocking_id=0, stealing_id=0, fouling_id=0, passed_id=0,
-                  next_x=0, next_y=0, team_id=None, substitute_id=0):
+                  next_x=0, next_y=0, team_id=None, substitute_id=0, substituted_id=0):
         x, y = self.courtPos if isinstance(self.courtPos, tuple) else (0, 0)
         if team_id is None:
             if self.possTeam == self.t1:
@@ -588,6 +610,7 @@ class GameState:
             AssistingPlayerID=int(self.assistPlayer["ID"]) if self.assistPlayer is not None else 0,
             PassedPlayerID=passed_id,
             SubstitutePlayerID=substitute_id,
+            SubstitutedPlayerID=substituted_id,
             DefenderID=int(defender["ID"]) if defender is not None else 0,
             BlockingPlayerID=blocking_id,
             StealingPlayerID=stealing_id,

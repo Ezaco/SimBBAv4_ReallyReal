@@ -185,6 +185,9 @@ def _describe_play(game, play, team_names):
 
     if play.EventID == substitution:
         entering = _player_name(game, play.SubstitutePlayerID)
+        leaving = _player_name(game, play.SubstitutedPlayerID)
+        if leaving:
+            return f"{team} substitution: {entering} enters the game for {leaving}."
         return f"{team} substitution: {entering} enters the game."
 
     if play.EventID == timeout:
